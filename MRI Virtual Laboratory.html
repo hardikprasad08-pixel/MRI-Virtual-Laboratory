@@ -1,0 +1,163 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MRI Virtual Laboratory</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0f14;--pn:#131a22;--tx:#d9e1ea;--mu:#8795a6;--ac:#4aa3ff;--bd:#263140;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--tx);font:12px/1.45 system-ui,Segoe UI,sans-serif}
+header{padding:8px 12px}h1{font-size:16px;margin:0}.mu{color:var(--mu)}nav{display:flex;gap:6px;padding:0 12px;flex-wrap:wrap}
+button,select,input[type=number]{background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:4px;padding:4px 9px;font-size:12px;cursor:pointer}nav button.on,button.go{background:var(--ac);color:#04121f;font-weight:700}
+main{padding:8px 12px}section{display:none}section.on{display:block}.g{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:8px}@media(max-width:900px){.g{grid-template-columns:1fr}}
+.pn{background:var(--pn);border:1px solid var(--bd);border-radius:6px;padding:8px;margin-bottom:8px}h4{margin:6px 0 3px;color:var(--mu);text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+.sl{display:grid;grid-template-columns:96px 1fr 56px;gap:4px;align-items:center}.sl input{width:100%}.sl span:last-child{text-align:right;color:var(--mu)}
+canvas{max-width:100%;display:block}#cv{width:100%;height:500px;background:#0b0f14;border-radius:4px;touch-action:none}.cc{width:100%;background:#000;border:1px solid var(--bd);border-radius:4px}
+.r div{display:flex;justify-content:space-between;border-bottom:1px solid var(--bd)}.r b{font-family:ui-monospace,monospace}label.k{display:block}.eq{font-family:ui-monospace,monospace;color:#9fd0ff}
+.px{image-rendering:pixelated}.row{display:flex;gap:8px;flex-wrap:wrap}.row>div{flex:1;min-width:150px}.warn{color:#e8b04a}
+</style></head><body>
+<header><h1>MRI Virtual Laboratory — from Maxwell’s equations to the image</h1><div class="mu">Educational simulation with simplified models. Not for clinical or safety decisions.</div></header>
+<nav id="nav"><button data-t="t1" class="on">Scanner (3D)</button><button data-t="t2">Spins &amp; Relaxation</button><button data-t="t3">Image &amp; k-space</button><button data-t="t4">Physics lab</button></nav>
+<main>
+<section id="t1" class="on"><div class="g"><div class="pn"><canvas id="cv"></canvas><div class="mu">Drag to rotate, wheel to zoom, click a component. B₀ lines are computed by Biot–Savart summation over 12 current loops (a toy winding, not an optimized magnet design).</div></div>
+<div><div class="pn"><button class="go" id="cut">CUTAWAY MRI</button> <button id="exp">EXPLODED VIEW</button><br>
+<label class="k"><input type="checkbox" id="iso"> Isolate selected component</label><label class="k"><input type="checkbox" id="pat" checked> Patient</label><label class="k"><input type="checkbox" id="b0l" checked> B₀ field lines</label><label class="k"><input type="checkbox" id="arr" checked> B₀ / B₁ vectors</label><label class="k"><input type="checkbox" id="gmap"> Gradient frequency map</label>
+<div id="sl1"></div><div class="mu" id="o1"></div>
+<div><button data-c="full">Full</button> <button data-c="front">Front</button> <button data-c="side">Side</button> <button data-c="bore">Inside bore</button> <button data-c="head">Head coil</button></div></div>
+<div class="pn"><h4>Axis field Bz(z) (T)</h4><canvas id="ax" class="cc" width="300" height="120"></canvas></div>
+<div class="pn r" id="info"><h4>Component inspector</h4>Click any layer, or pick:<div id="cl"></div></div></div></div></section>
+
+<section id="t2"><div class="g"><div><div class="pn"><canvas id="sp" class="cc" width="560" height="380"></canvas><label><input type="radio" name="fr" value="rot" checked> Rotating frame</label> <label><input type="radio" name="fr" value="lab"> Lab frame (precession not to scale)</label></div>
+<div class="pn"><canvas id="tl" class="cc" width="560" height="110"></canvas><canvas id="sg" class="cc" width="560" height="140" style="margin-top:4px"></canvas><div class="mu">Timeline: RF, slice-select gradient Gz, and received signal |Mxy| (Faraday induction in the receive coil). Orange dashed = e^(−t/T2); solid = simulated signal (T2* when field is inhomogeneous).</div></div></div>
+<div><div class="pn"><div id="sl2"></div><select id="seq"><option value="fid">Free induction decay</option><option value="se">Spin echo (90°–180°)</option></select> <select id="ts"><option value="900,100">Grey matter</option><option value="600,80" selected>White matter</option><option value="4000,2000">CSF</option><option value="1100,120">Tumour (example)</option></select><br><br><button class="go" id="run">APPLY RF PULSE / RUN</button> <button id="pp">Pause</button></div>
+<div class="pn r" id="o2"></div></div></div></section>
+
+<section id="t3"><div class="g"><div><div class="row"><div class="pn"><h4>k-space (log |K|)</h4><canvas id="kc" class="cc px" width="64" height="64"></canvas></div><div class="pn"><h4>Reconstructed (inverse FFT)</h4><canvas id="rc" class="cc px" width="64" height="64"></canvas></div><div class="pn"><h4>Ideal signal map</h4><canvas id="gc" class="cc px" width="64" height="64"></canvas></div></div>
+<div class="pn"><button class="go" id="acq">ACQUIRE k-SPACE</button> <button id="full">Reconstruct all</button> <button id="mc">Keep centre only</button> <button id="mo">Keep outer only</button> <button id="mn">No filter</button> <span class="mu" id="kst"></span><br>
+<button data-p="500,15">T1-weighted</button> <button data-p="4000,100">T2-weighted</button> <button data-p="4000,15">PD-weighted</button> <label><input type="checkbox" id="tum" checked> Tumour example</label></div></div>
+<div><div class="pn"><div id="sl3"></div><div class="mu eq">S ∝ ρ(1−e^(−TR/T1))e^(−TE/T2)</div><div class="mu">Simplified spin-echo model: ignores B₁/B₀ inhomogeneity, diffusion, flow, partial-volume and real values vary with field strength. Image labelled SIMULATED MRI IMAGE (synthetic phantom).</div></div><div class="pn r" id="o3"></div></div></div></section>
+
+<section id="t4"><div class="row"><div class="pn"><h4>Larmor frequency</h4>B₀ (T) <input id="l1" type="number" value="3" step=".1"> γ̄ (MHz/T) <input id="l2" type="number" value="42.577" step=".001"><div class="eq" id="lo"></div></div>
+<div class="pn"><h4>Slice thickness</h4>RF BW (Hz) <input id="s1" type="number" value="1000"> Gz (mT/m) <input id="s2" type="number" value="10"><div class="eq" id="so"></div><div class="mu">Δz = BW / (γ̄ G), γ̄ in Hz/T</div></div>
+<div class="pn"><h4>SAR (peak-phasor E)</h4>σ (S/m) <input id="r1" type="number" value=".6" step=".1"> |E| (V/m) <input id="r2" type="number" value="50"> ρ (kg/m³) <input id="r3" type="number" value="1040"><div class="eq" id="ro"></div><div class="mu">SAR = σ|E|²/(2ρ); local educational estimate, not scanner SAR.</div></div>
+<div class="pn"><h4>Faraday: receive-coil EMF</h4>N <input id="f1" type="number" value="1"> Area (cm²) <input id="f2" type="number" value="100"> Bxy amplitude (µT) <input id="f3" type="number" value="1"> f (MHz) <input id="f4" type="number" value="127.7"><div class="eq" id="fo"></div><div class="mu">EMF = −dΦ/dt, Φ = N A B cos(ωt) ⇒ EMF_peak = N A B ω</div></div></div>
+<div class="pn"><h4>Maxwell’s equations in MRI (click)</h4><div id="mx"></div><div id="mxi" class="r" style="margin-top:6px"></div></div></section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=i=>document.getElementById(i),v=i=>+$(i).value,GR=267.522e6,GB=42.577;
+function mk(h,defs,cb){$(h).innerHTML=defs.map(d=>`<div class="sl"><span>${d[1]}</span><input type="range" id="${d[0]}" min="${d[2]}" max="${d[3]}" step="${d[4]}" value="${d[5]}"><span id="v_${d[0]}">${d[5]}</span></div>`).join('');defs.forEach(d=>$(d[0]).oninput=()=>{$('v_'+d[0]).textContent=$(d[0]).value;cb(d[0])})}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.t))});
+function plot(c,S,x0,x1,y0,y1,cur){const g=c.getContext('2d'),W=c.width,H=c.height;g.fillStyle='#000';g.fillRect(0,0,W,H);g.strokeStyle='#223';g.strokeRect(30,6,W-36,H-18);g.fillStyle='#789';g.font='9px sans-serif';g.fillText(y1.toPrecision(2),2,14);g.fillText(y0.toPrecision(2),2,H-12);g.fillText(x0.toPrecision(2),30,H-2);g.fillText(x1.toPrecision(3),W-40,H-2);
+ S.forEach(s=>{g.strokeStyle=s.c;g.setLineDash(s.d?[4,3]:[]);g.beginPath();s.x.forEach((x,i)=>{const px=30+(x-x0)/(x1-x0)*(W-36),py=6+(1-(s.y[i]-y0)/(y1-y0))*(H-18);i?g.lineTo(px,py):g.moveTo(px,py)});g.stroke()});g.setLineDash([]);
+ if(cur!=null){g.strokeStyle='#ff0';const px=30+(cur-x0)/(x1-x0)*(W-36);g.beginPath();g.moveTo(px,6);g.lineTo(px,H-12);g.stroke()}}
+// ================= SCANNER =================
+const COMP=[['housing','Outer housing',.95,1.7,0xdfe3e8,.9],['shield','Magnetic shielding',.88,1.6,0x8a96a3,.35],['cryo','Cryostat / vacuum vessel',.8,1.5,0x6fa8d6,.35],['magnet','Superconducting magnet',.7,1.2,0xd9a441,.3],['shim','Shim system',.6,1.1,0x7fcf8a,.35],['grad','Gradient coils',.5,1,0xd05a5a,.4],['rf','RF body coil',.42,.9,0xb07fd6,.4],['bore','Patient bore liner',.35,1.7,0xf2f2f2,.4],['head','Head coil',.17,.35,0x40b5c0,.5]];
+const INFO={housing:['Cosmetic and acoustic enclosure; houses services.','Mechanical shell, not magnetically active.','—','~2 m long, ~70 cm bore','Magnet and coils exposed; no patient comfort or acoustic damping.'],
+shield:['Reduces fringe field and keeps external steel from disturbing B₀.','High-permeability material channels flux (B = μH, ∇·B = 0).','∇·B = 0, B = μ₀μᵣH','Fe/steel layers','Larger fringe field; external objects distort field homogeneity.'],
+cryo:['Vacuum vessel and thermal shields keep the coil at about 4 K.','Vacuum suppresses conduction/convection heat transfer. Architecture varies between vendors.','Q = k A ΔT / d','Liquid helium ~4.2 K (or low-helium designs)','Coil warms and loses superconductivity.'],
+magnet:['Produces the static field B₀ along the bore axis.','Persistent current in superconducting windings creates a uniform field (Ampère–Maxwell law, Biot–Savart).','∮B·dl = μ₀I,  dB = (μ₀/4π) I dl×r̂ / r²','0.5–7 T clinical/research','No polarization of spins, so no MR signal.'],
+shim:['Corrects small B₀ inhomogeneities.','Adds small corrective fields (passive iron and active coils) so ΔB/B₀ is in the ppm range.','B = B₀ + Σ corrections','Ppm-level homogeneity over the imaging volume','Larger T2* dephasing, geometric distortion, poor fat suppression.'],
+grad:['Makes B (hence Larmor frequency) depend on position, giving spatial encoding.','Time-varying currents in special windings give B_z = B₀ + G·r; rapid switching also induces eddy currents (Faraday/Lenz).','ω(x) = γ(B₀ + G_x x)','10–80 mT/m, slew ~ 100–200 T/m/s','No localization: the signal cannot form an image.'],
+rf:['Transmits B₁ at the Larmor frequency; can also receive.','Oscillating currents create a transverse B₁ (and an E field that deposits RF energy → SAR). Receive: Faraday induction.','ω₀ = γB₀,  EMF = −dΦ/dt,  SAR = σ|E|²/2ρ','~64 MHz (1.5 T), 128 MHz (3 T), 298 MHz (7 T)','No excitation of magnetization.'],
+bore:['Patient opening and mechanical liner for all coils.','Passive structure; field remains approximately uniform at isocentre.','—','~60–70 cm diameter','Patient would contact coil assemblies.'],
+head:['Close-fitting receive (and transmit) coil for brain imaging.','Close coupling to tissue increases induced voltage and SNR.','EMF = −N dΦ/dt','Birdcage or phased-array','Lower signal-to-noise ratio.']};
+let scene,cam,rend,clip,G={},sel=null,cutOn=false,expOn=false,az=.8,el=.3,dist=5.5,tgt,gaz=az,gel=el,gd=dist,gt,fl,arrB1,gdots,patG,tt=0;
+const LZ=[...Array(12)].map((_,i)=>-.55+1.1*i/11);
+function Bf(x,y,z){let bx=0,by=0,bz=0;const R=.7,M=32;for(const z0 of LZ)for(let k=0;k<M;k++){const a0=2*Math.PI*k/M,a1=2*Math.PI*(k+1)/M,dx=R*(Math.cos(a1)-Math.cos(a0)),dy=R*(Math.sin(a1)-Math.sin(a0)),rx=x-R*Math.cos((a0+a1)/2),ry=y-R*Math.sin((a0+a1)/2),rz=z-z0,r3=Math.pow(rx*rx+ry*ry+rz*rz,1.5)+1e-9;bx+=dy*rz/r3;by-=dx*rz/r3;bz+=(dx*ry-dy*rx)/r3}return[bx,by,bz]}
+const BC=Bf(0,0,0)[2];
+function trace(p,d){const o=[p.slice()];for(let i=0;i<150;i++){let b=Bf(...p),m=Math.hypot(...b);const mid=p.map((q,j)=>q+b[j]/m*d*.0125);b=Bf(...mid);m=Math.hypot(...b);p=p.map((q,j)=>q+b[j]/m*d*.025);if(Math.abs(p[2])>2.2||Math.hypot(p[0],p[1])>1.3)break;o.push(p.slice())}return o}
+function init1(){tgt=new THREE.Vector3(0,0,.2);gt=tgt.clone();rend=new THREE.WebGLRenderer({canvas:$('cv'),antialias:true});clip=new THREE.Plane(new THREE.Vector3(-1,0,0),1e3);rend.clippingPlanes=[clip];
+ scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0f14);cam=new THREE.PerspectiveCamera(40,1,.02,60);scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1));const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(3,5,4);scene.add(dl);
+ COMP.forEach(c=>{const g=new THREE.Group(),m=new THREE.MeshPhongMaterial({color:c[4],transparent:true,opacity:c[5],side:THREE.DoubleSide,depthWrite:false,shininess:40});g.userData={id:c[0],base:c[5],ms:[m]};
+  const cy=new THREE.Mesh(new THREE.CylinderGeometry(c[2],c[2],c[3],56,1,true).rotateX(Math.PI/2),m);cy.userData.id=c[0];g.add(cy);
+  if(c[0]==='magnet')for(let k=0;k<12;k++){const mm=new THREE.MeshPhongMaterial({color:0xe0a030,transparent:true});g.userData.ms.push(mm);const t=new THREE.Mesh(new THREE.TorusGeometry(c[2],.025,8,64),mm);t.position.z=LZ[k];t.userData.id='magnet';g.add(t)}
+  if(c[0]==='housing')[-1,1].forEach(s=>{const r=new THREE.Mesh(new THREE.RingGeometry(.35,.95,56),m);r.position.z=s*.85;r.userData.id='housing';g.add(r)});
+  if(c[0]==='head'||c[0]==='rf'){const mm=new THREE.LineBasicMaterial({color:c[4],transparent:true});g.userData.ms.push(mm);const ls=new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.CylinderGeometry(c[2],c[2],c[3],16,1,true).rotateX(Math.PI/2)),mm);ls.userData.id=c[0];g.add(ls)}
+  scene.add(g);G[c[0]]=g});
+ // patient (simplified procedural) + table
+ patG=new THREE.Group();const sm=new THREE.MeshPhongMaterial({color:0xdba88a,transparent:true,opacity:1});patG.userData.m=sm;const E=(r,x,y,z,sx,sy,sz)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(r,28,20),sm);m.scale.set(sx,sy,sz);m.position.set(x,y,z);patG.add(m)};
+ E(1,0,0,0,.095,.12,.105);E(1,0,-.03,.15,.05,.05,.07);E(1,0,-.1,.5,.17,.1,.32);E(1,-.07,-.12,1.05,.06,.07,.3);E(1,.07,-.12,1.05,.06,.07,.3);
+ const bg=new THREE.SphereGeometry(1,64,48),p=bg.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i),r=1+.06*Math.sin(14*x+3*y)*Math.sin(12*z+2*y)+.04*Math.sin(19*y+7*z);p.setXYZ(i,x*r*.075,y*r*.085,z*r*.085)}bg.computeVertexNormals();patG.add(new THREE.Mesh(bg,new THREE.MeshPhongMaterial({color:0xd9a3a8})));scene.add(patG);
+ const tb=new THREE.Mesh(new THREE.BoxGeometry(.5,.04,2.4),new THREE.MeshPhongMaterial({color:0x445566}));tb.position.set(0,-.225,.6);scene.add(tb);
+ // field lines
+ const pts=[];[.04,.12,.22,.3,.5,.78,.86].forEach(r=>[0,Math.PI/2,Math.PI,1.5*Math.PI].forEach(a=>[1,-1].forEach(d=>{const t=trace([r*Math.cos(a),r*Math.sin(a),0],d);for(let i=1;i<t.length;i++)pts.push(...t[i-1],...t[i])})));
+ const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pts),3));fl=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0x4aa3ff,transparent:true,opacity:.6}));scene.add(fl);
+ arrB1=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(0,0,0),.3,0xff5a4a);scene.add(arrB1);scene.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(0,-.12,-.6),1.2,0x4aa3ff));
+ gdots=new THREE.Group();for(let i=0;i<21;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(.018,10,8),new THREE.MeshBasicMaterial({color:0xffffff}));m.position.set(0,.12,-.5+i*.05);gdots.add(m)}scene.add(gdots);
+ let dr=false,px,py,mv=0;const cv=$('cv');cv.onpointerdown=e=>{dr=true;mv=0;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId)};cv.onpointerup=e=>{dr=false;if(mv<4)pick(e)};
+ cv.onpointermove=e=>{if(!dr)return;mv+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);gaz=az-=(e.clientX-px)*.008;gel=el=Math.max(-1.4,Math.min(1.4,el+(e.clientY-py)*.008));px=e.clientX;py=e.clientY};cv.onwheel=e=>{e.preventDefault();gd=dist=Math.max(.5,Math.min(14,dist*(1+e.deltaY*.001)))};
+ mk('sl1',[['B0','B₀ (T)',.5,7,.1,3],['Gz','Gradient Gz (mT/m)',1,80,1,20]],upd1);
+ $('cl').innerHTML=COMP.map(c=>`<button data-k="${c[0]}">${c[1]}</button>`).join(' ');$('cl').onclick=e=>{if(e.target.dataset.k)choose(e.target.dataset.k)};
+ $('cut').onclick=()=>{cutOn=!cutOn;clip.constant=cutOn?0:1e3};$('exp').onclick=()=>{expOn=!expOn};
+ document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{const c={full:[0,0,.2,5.5,.8,.3],front:[0,0,.2,5,0,0],side:[0,0,.2,5,1.57,0],bore:[0,0,0,1.3,0,0],head:[0,0,0,.8,.6,.2]}[b.dataset.c];gt=new THREE.Vector3(c[0],c[1],c[2]);gd=c[3];gaz=c[4];gel=c[5]});
+ upd1();loop()}
+function pick(e){const r=$('cv').getBoundingClientRect(),rc=new THREE.Raycaster();rc.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);const hs=[];Object.values(G).forEach(g=>g.children.forEach(c=>{if(c.material.opacity>.1)hs.push(c)}));const h=rc.intersectObjects(hs);if(h.length)choose(h[0].object.userData.id)}
+function choose(k){sel=k;const c=COMP.find(x=>x[0]===k),i=INFO[k];$('info').innerHTML=`<h4>Component inspector</h4><b>${c[1]}</b>`+['Purpose','Physics','Equations','Typical parameters','If removed'].map((t,j)=>`<div style="display:block"><span class="mu">${t}:</span> <span class="${j==2?'eq':''}">${i[j]}</span></div>`).join('')+'<div id="cl2"></div>';gt=new THREE.Vector3(0,0,0);gd=k==='head'?.8:3}
+function upd1(){const B=v('B0'),G_=v('Gz');$('o1').innerHTML=`f₀(¹H) = ${(GB*B).toFixed(2)} MHz · Δf over ±20 cm at Gz: ±${(GB*G_*.2).toFixed(1)} kHz`;
+ const s=[],x=[];for(let i=0;i<=80;i++){const z=-1.2+2.4*i/80;x.push(z);s.push(Bf(0,0,z)[2]/BC*B)}plot($('ax'),[{x,y:s,c:'#4aa3ff'}],-1.2,1.2,0,B*1.15);
+ gdots.children.forEach((m,i)=>{const z=-.5+i*.05,d=(z)*G_/80;m.material.color.setHSL(.66-.66*(d+.5)/1,.9,.55)})}
+function loop(){requestAnimationFrame(loop);if(!$('t1').classList.contains('on'))return;tt+=.03;const cv=$('cv'),w=cv.clientWidth,h=cv.clientHeight;if(cv.width!==Math.round(w*devicePixelRatio)){rend.setPixelRatio(devicePixelRatio);rend.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+ const k=.08;tgt.lerp(gt,k);dist+=(gd-dist)*k;az+=(gaz-az)*k;el+=(gel-el)*k;cam.position.set(tgt.x+dist*Math.cos(el)*Math.sin(az),tgt.y+dist*Math.sin(el),tgt.z+dist*Math.cos(el)*Math.cos(az));cam.lookAt(tgt);
+ COMP.forEach((c,i)=>{const g=G[c[0]],tz=expOn?(i-4)*.32:0;g.position.z+=(tz-g.position.z)*.1;const o=$('iso').checked&&sel?(sel===c[0]?.9:.04):g.userData.base;g.userData.ms.forEach(m=>m.opacity=o)});
+ patG.visible=$('pat').checked;fl.visible=$('b0l').checked;arrB1.visible=gdots.visible=false;const a=$('arr').checked;arrB1.visible=a;gdots.visible=$('gmap').checked;arrB1.setDirection(new THREE.Vector3(Math.cos(tt*3),Math.sin(tt*3),0));
+ rend.render(scene,cam)}
+// ================= SPINS =================
+const N=48;let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;const GA=[...Array(N)].map(()=>Math.sqrt(-2*Math.log(rnd()+1e-9))*Math.cos(2*Math.PI*rnd()));
+mk('sl2',[['B0s','B₀ (T)',.5,7,.1,3],['t1','T1 (ms)',200,4500,10,600],['t2','T2 (ms)',20,2000,5,80],['fa','Flip angle (°)',5,180,1,90],['tau','Pulse length (ms)',.2,3,.1,1],['off','RF offset (kHz)',-3,3,.05,0],['ppm','B₀ inhomog. (ppm)',0,5,.1,.5],['te','TE (ms)',10,120,1,40]],id=>{info2();if(id!=='B0s')bloch()});
+$('ts').onchange=()=>{const [a,b]=$('ts').value.split(',');$('t1').value=a;$('t2').value=b;$('v_t1').textContent=a;$('v_t2').textContent=b;bloch()};$('seq').onchange=bloch;
+let REC=null,ti=0,paused=false,vaz=.7,vel=.35;
+function info2(){const f0=GB*v('B0s'),tau=v('tau'),on=Math.abs(v('off'))<.5/tau,B1=v('fa')*Math.PI/180/(GR*tau*1e-3)*1e6;$('o2').innerHTML=[['Larmor f₀=γB₀/2π',f0.toFixed(2)+' MHz'],['RF frequency',(f0+v('off')/1e3).toFixed(3)+' MHz'],['Resonance',on?'ON RESONANCE':'OFF RESONANCE'],['B₁ amplitude (flip = γB₁τ)',B1.toFixed(2)+' µT'],['T2* (est.)',(1/(1/v('t2')+.2675*v('B0s')*v('ppm'))).toFixed(1)+' ms'],['Signal peak |Mxy|',REC?Math.max(...REC.sig).toFixed(3):'—']].map(r=>`<div><span>${r[0]}</span><b>${r[1]}</b></div>`).join('')}
+function bloch(){const seq=$('seq').value,T1=v('t1'),T2=v('t2'),a=v('fa')*Math.PI/180,tau=v('tau'),off=v('off'),te=v('te'),sg=.2675*v('B0s')*v('ppm'),dt=.05,tot=seq==='fid'?Math.max(40,3*T2):te+25,steps=Math.round(tot/dt),D=GA.map(g=>2*Math.PI*off+sg*g),M=new Float32Array(N*3);
+ for(let i=0;i<N;i++)M[i*3+2]=1;const e1=Math.exp(-dt/T1),e2=Math.exp(-dt/T2),sig=[],mz=[],sn=[],K=4;
+ for(let s=0;s<steps;s++){const t=s*dt;let w1=0;if(t<tau)w1=a/tau;else if(seq==='se'&&t>=te/2-tau/2&&t<te/2+tau/2)w1=Math.PI/tau;let sx=0,sy=0,sz=0;
+  for(let i=0;i<N;i++){let x=M[i*3],y=M[i*3+1],z=M[i*3+2];const om=Math.hypot(w1,D[i]);if(om>0){const ang=om*dt,c=Math.cos(ang),sn_=Math.sin(ang),kx=w1/om,kz=D[i]/om,kd=kx*x+kz*z,cx=-kz*y,cy=kz*x-kx*z,cz=kx*y;x=x*c+cx*sn_+kx*kd*(1-c);y=y*c+cy*sn_;z=z*c+cz*sn_+kz*kd*(1-c)}
+   x*=e2;y*=e2;z=1+(z-1)*e1;M[i*3]=x;M[i*3+1]=y;M[i*3+2]=z;sx+=x;sy+=y;sz+=z}
+  sig.push(Math.hypot(sx,sy)/N);mz.push(sz/N);if(s%K===0)sn.push(Float32Array.from(M))}
+ REC={sig,mz,sn,dt,K,tot,seq,te,tau,a,T2,steps};ti=0;info2()}
+$('run').onclick=()=>{bloch();paused=false;$('pp').textContent='Pause'};$('pp').onclick=()=>{paused=!paused;$('pp').textContent=paused?'Play':'Pause'};
+let dd=false,qx,qy;$('sp').onpointerdown=e=>{dd=true;qx=e.clientX;qy=e.clientY;$('sp').setPointerCapture(e.pointerId)};$('sp').onpointerup=()=>dd=false;$('sp').onpointermove=e=>{if(!dd)return;vaz-=(e.clientX-qx)*.01;vel=Math.max(-1.3,Math.min(1.3,vel+(e.clientY-qy)*.01));qx=e.clientX;qy=e.clientY};
+function draw2(){requestAnimationFrame(draw2);if(!$('t2').classList.contains('on')||!REC)return;if(!paused)ti=Math.min(REC.steps-1,ti+6);
+ const c=$('sp'),g=c.getContext('2d'),W=c.width,H=c.height,R=140,cx=W/2,cy=H/2+5;g.fillStyle='#000';g.fillRect(0,0,W,H);const lab=document.querySelector('input[name=fr]:checked').value==='lab',th=lab?ti*REC.dt*3:0;
+ const pr=(x,y,z)=>{const xr=x*Math.cos(vaz)-y*Math.sin(vaz),yr=x*Math.sin(vaz)+y*Math.cos(vaz);return[cx+R*xr,cy-R*(z*Math.cos(vel)+yr*Math.sin(vel))]};
+ g.strokeStyle='#223';g.beginPath();g.arc(cx,cy,R,0,7);g.stroke();[[1.1,0,0,'x'],[0,1.1,0,'y'],[0,0,1.15,'z (B₀)']].forEach(a=>{const p=pr(0,0,0),q=pr(a[0],a[1],a[2]);g.strokeStyle=a[3][0]=='z'?'#4aa3ff':'#556';g.beginPath();g.moveTo(...p);g.lineTo(...q);g.stroke();g.fillStyle='#8ab';g.fillText(a[3],q[0]+4,q[1])});
+ const S=REC.sn[Math.min(REC.sn.length-1,Math.floor(ti/REC.K))];let sx=0,sy=0,sz=0;g.lineWidth=1;
+ for(let i=0;i<N;i++){let x=S[i*3],y=S[i*3+1];const z=S[i*3+2],c_=Math.cos(th),s_=Math.sin(th),xx=x*c_-y*s_,yy=x*s_+y*c_;sx+=xx;sy+=yy;sz+=z;g.strokeStyle='rgba(255,200,90,.55)';const p=pr(0,0,0),q=pr(xx,yy,z);g.beginPath();g.moveTo(...p);g.lineTo(...q);g.stroke()}
+ sx/=N;sy/=N;sz/=N;g.strokeStyle='#ff4a4a';g.lineWidth=3;g.beginPath();g.moveTo(...pr(0,0,0));g.lineTo(...pr(sx,sy,sz));g.stroke();g.lineWidth=1;g.fillStyle='#ddd';g.fillText(`t = ${(ti*REC.dt).toFixed(1)} ms   Mz=${sz.toFixed(2)}  |Mxy|=${Math.hypot(sx,sy).toFixed(2)}   yellow = individual spins, red = net M`,8,14);
+ const t=[],mzs=[],sg=[],ex=[];for(let i=0;i<REC.steps;i+=4){t.push(i*REC.dt);sg.push(REC.sig[i]);mzs.push(REC.mz[i]);ex.push(Math.exp(-Math.max(0,i*REC.dt-REC.tau)/REC.T2))}
+ plot($('sg'),[{x:t,y:ex,c:'#f90',d:1},{x:t,y:mzs,c:'#4aa3ff'},{x:t,y:sg,c:'#7fe08a'}],0,REC.tot,-1,1,ti*REC.dt);
+ const tl=$('tl'),h=tl.getContext('2d'),w2=tl.width,Hh=tl.height,X=tt_=>30+tt_/REC.tot*(w2-36);h.fillStyle='#000';h.fillRect(0,0,w2,Hh);h.font='10px sans-serif';
+ [['RF',20,'#b07fd6'],['Gz',55,'#d05a5a'],['Signal',90,'#7fe08a']].forEach(r=>{h.fillStyle='#789';h.fillText(r[0],2,r[1]);h.strokeStyle='#223';h.beginPath();h.moveTo(30,r[1]+8);h.lineTo(w2-6,r[1]+8);h.stroke()});
+ const pulses=[[0,REC.tau,REC.a]];if(REC.seq==='se')pulses.push([REC.te/2-REC.tau/2,REC.tau,Math.PI]);pulses.forEach(p=>{h.fillStyle='#b07fd6';const hh=6+14*p[2]/Math.PI;h.fillRect(X(p[0]),28-hh,Math.max(3,X(p[0]+p[1])-X(p[0])),hh);h.fillStyle='#d05a5a';h.fillRect(X(p[0]),63-10,Math.max(3,X(p[0]+p[1])-X(p[0])),10)});
+ h.strokeStyle='#7fe08a';h.beginPath();REC.sig.forEach((s,i)=>{if(i%8)return;const x=X(i*REC.dt),y=98-14*s;i?h.lineTo(x,y):h.moveTo(x,y)});h.stroke();h.strokeStyle='#ff0';h.beginPath();h.moveTo(X(ti*REC.dt),4);h.lineTo(X(ti*REC.dt),Hh-4);h.stroke()}
+// ================= IMAGE / K-SPACE =================
+const NI=64,TS=[null,[250,70,.9],[600,3,.03],[4000,2000,1],[900,100,.8],[600,80,.7],[1100,120,.9]],TN=['Air','Scalp/fat','Skull','CSF','Grey matter','White matter','Tumour'];
+const LAB=new Uint8Array(NI*NI);function phantom(){for(let j=0;j<NI;j++)for(let i=0;i<NI;i++){const x=(i-31.5)/32,y=(j-31.5)/32,rho=Math.hypot(x/.85,y/.95),th=Math.atan2(y,x),rb=.78+.025*Math.sin(14*th)+.015*Math.sin(23*th);let l=0;
+ if(rho<1){l=1;if(rho<.94)l=2;if(rho<.87)l=3;if(rho<rb){l=rho<rb-.1?5:4;if(Math.abs((x-.1)/.07)**2+((y)/.25)**2<1||Math.abs((x+.1)/.07)**2+((y)/.25)**2<1)l=3}}
+ if($('tum').checked&&Math.hypot(x-.35,y-.2)<.14+.02*Math.sin(6*th*3))l=6;LAB[j*NI+i]=l}}
+const sf=(l,TR,TE)=>{if(!l)return 0;const t=TS[l];return t[2]*(1-Math.exp(-TR/t[0]))*Math.exp(-TE/t[1])};
+mk('sl3',[['TR','TR (ms)',100,5000,50,500],['TE','TE (ms)',5,150,1,15],['nz','Noise',0,100,1,0],['mr','Filter radius',2,30,1,8]],id=>{id==='nz'||id==='mr'?recon():build()});
+let KR=new Float64Array(NI*NI),KI=new Float64Array(NI*NI),IMGF,nR,nI,filled=0,acqOn=false,mode='all';
+function fft1(re,im,inv){const n=re.length;for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]]}}
+ for(let l=2;l<=n;l<<=1){const a=2*Math.PI/l*(inv?1:-1),wr=Math.cos(a),wi=Math.sin(a);for(let i=0;i<n;i+=l){let cr=1,ci=0;for(let j=0;j<l/2;j++){const u=i+j,w=u+l/2,xr=re[w]*cr-im[w]*ci,xi=re[w]*ci+im[w]*cr;re[w]=re[u]-xr;im[w]=im[u]-xi;re[u]+=xr;im[u]+=xi;const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t}}}if(inv)for(let i=0;i<n;i++){re[i]/=n;im[i]/=n}}
+function fft2(re,im,inv){const n=NI,r=new Float64Array(n),m=new Float64Array(n);for(let y=0;y<n;y++){for(let x=0;x<n;x++){r[x]=re[y*n+x];m[x]=im[y*n+x]}fft1(r,m,inv);for(let x=0;x<n;x++){re[y*n+x]=r[x];im[y*n+x]=m[x]}}for(let x=0;x<n;x++){for(let y=0;y<n;y++){r[y]=re[y*n+x];m[y]=im[y*n+x]}fft1(r,m,inv);for(let y=0;y<n;y++){re[y*n+x]=r[y];im[y*n+x]=m[y]}}}
+const sgn=(i,j)=>((i+j)&1)?-1:1;
+function show(id,a,max){const c=$(id).getContext('2d'),im=c.createImageData(NI,NI);for(let i=0;i<NI*NI;i++){const t=Math.max(0,Math.min(255,255*a[i]/max));im.data[i*4]=im.data[i*4+1]=im.data[i*4+2]=t;im.data[i*4+3]=255}c.putImageData(im,0,0)}
+function build(){phantom();const TR=v('TR'),TE=v('TE'),img=new Float64Array(NI*NI);let mx=0;for(let i=0;i<NI*NI;i++){img[i]=sf(LAB[i],TR,TE);mx=Math.max(mx,img[i])}IMGF=img;show('gc',img,mx||1);
+ KR=new Float64Array(NI*NI);KI=new Float64Array(NI*NI);for(let j=0;j<NI;j++)for(let i=0;i<NI;i++)KR[j*NI+i]=img[j*NI+i]*sgn(i,j);fft2(KR,KI,false);
+ let km=0;for(let i=0;i<NI*NI;i++)km=Math.max(km,Math.hypot(KR[i],KI[i]));seed=11;nR=new Float64Array(NI*NI);nI=new Float64Array(NI*NI);for(let i=0;i<NI*NI;i++){nR[i]=Math.sqrt(-2*Math.log(rnd()+1e-9))*Math.cos(2*Math.PI*rnd());nI[i]=Math.sqrt(-2*Math.log(rnd()+1e-9))*Math.cos(2*Math.PI*rnd())}$('KM').value=km;
+ $('o3').innerHTML=`<h4>Tissue signal (TR ${TR}, TE ${TE})</h4>`+[1,3,4,5,6].map(l=>`<div><span>${TN[l]} (T1 ${TS[l][0]}, T2 ${TS[l][1]}, ρ ${TS[l][2]})</span><b>${(mx?sf(l,TR,TE)/mx:0).toFixed(2)}</b></div>`).join('');recon()}
+function recon(){const R=v('mr'),nz=v('nz')/100*(+$('KM').value)*.05,re=new Float64Array(NI*NI),im=new Float64Array(NI*NI),km=new Float64Array(NI*NI);
+ for(let j=0;j<NI;j++)for(let i=0;i<NI;i++){const k=j*NI+i,r=Math.hypot(i-32,j-32);let keep=j<filled;if(mode==='c'&&r>R)keep=false;if(mode==='o'&&r<=R)keep=false;if(keep){re[k]=KR[k]+nz*nR[k];im[k]=KI[k]+nz*nI[k]}km[k]=keep?Math.log(1+Math.hypot(re[k],im[k])):0}
+ const lm=Math.log(1+(+$('KM').value));show('kc',km,lm);fft2(re,im,true);const o=new Float64Array(NI*NI);let mx=0;for(let j=0;j<NI;j++)for(let i=0;i<NI;i++){o[j*NI+i]=Math.abs(re[j*NI+i]*sgn(i,j));mx=Math.max(mx,o[j*NI+i])}
+ const gm=Math.max(...IMGF);show('rc',o,gm||1);$('kst').textContent=`lines acquired: ${filled}/${NI}${mode==='c'?' · centre only':mode==='o'?' · outer only':''}`}
+$('KM')||document.body.insertAdjacentHTML('beforeend','<input id="KM" type="hidden" value="1">');
+$('acq').onclick=()=>{filled=0;acqOn=true;mode='all'};['full','mc','mo','mn'].forEach(id=>$(id).onclick=()=>{if(id==='full'){filled=NI;mode='all'}else{filled=NI;mode=id==='mc'?'c':id==='mo'?'o':'all'}acqOn=false;recon()});
+document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const [a,c]=b.dataset.p.split(',');$('TR').value=a;$('TE').value=c;$('v_TR').textContent=a;$('v_TE').textContent=c;build()});$('tum').onchange=build;
+setInterval(()=>{if(acqOn&&$('t3').classList.contains('on')){filled=Math.min(NI,filled+2);if(filled>=NI)acqOn=false;recon()}},60);
+// ================= PHYSICS LAB =================
+function calc(){const f0=v('l1')*v('l2');$('lo').textContent=`f₀ = γ̄B₀ = ${f0.toFixed(2)} MHz;  ω₀ = ${(2*Math.PI*f0).toFixed(1)}×10⁶ rad/s`;
+ $('so').textContent=`Δz = ${(v('s1')/(v('l2')*1e6*v('s2')*1e-3)*1e3).toFixed(2)} mm`;$('ro').textContent=`SAR = ${(v('r1')*v('r2')**2/(2*v('r3'))).toFixed(3)} W/kg`;
+ $('fo').textContent=`EMF_peak = ${(v('f1')*v('f2')*1e-4*v('f3')*1e-6*2*Math.PI*v('f4')*1e6*1e3).toExponential(2)} mV`}
+['l1','l2','s1','s2','r1','r2','r3','f1','f2','f3','f4'].forEach(i=>$(i).oninput=calc);
+const MX=[['∇·D = ρ','Gauss (electric): charge/E-field relation; RF E fields arise from coil charges/currents and drive tissue currents → SAR.'],['∇·B = 0','No magnetic monopoles: B₀ field lines close on themselves (see the line plot); shapes the field topology of the magnet.'],['∇×E = −∂B/∂t','Faraday: precessing transverse magnetization changes flux through the receive coil → induced EMF (the MR signal); also eddy currents when gradients switch.'],['∇×H = J + ∂D/∂t','Ampère–Maxwell: currents in magnet, gradient and RF coils create B₀, G and B₁; displacement current matters for RF wavelength effects.']];
+$('mx').innerHTML=MX.map((m,i)=>`<button data-m="${i}" class="eq">${m[0]}</button>`).join(' ');$('mx').onclick=e=>{if(e.target.dataset.m)$('mxi').innerHTML='<div style="display:block">'+MX[e.target.dataset.m][1]+'</div>'};
+init1();build();bloch();calc();draw2();
+</script></body></html>
